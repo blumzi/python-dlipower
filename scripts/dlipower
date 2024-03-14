@@ -103,11 +103,8 @@ if __name__ == "__main__":
     )
     (options, args) = parser.parse_args()
 
-    switch = PowerSwitch(
-        userid=options.user, password=options.password,
-        hostname=options.hostname, timeout=options.timeout,
-        cycletime=options.cycletime, use_https=options.ssl
-    )
+    switch = PowerSwitch(userid=options.user, password=options.password, hostname=options.hostname,
+                         timeout=options.timeout, cycle_time=options.cycletime, use_https=options.ssl)
     if options.save_settings:
         switch.save_configuration()
     if len(args):

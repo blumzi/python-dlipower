@@ -1,102 +1,102 @@
 #!/usr/bin/python
 # Copyright (c) 2009-2015, Dwight Hubbard
 # Copyrights licensed under the New BSD License
-# See the accompanying LICENSE.txt file for terms.
-"""
-Digital Loggers Web Power Switch Management
-
-The module provides a python class named
-powerswitch that allows managing the web power
-switch from python programs.
-
-When run as a script this acts as a command line utility to
-manage the DLI Power switch.
-
-Notes
------
-This module has been tested against the following
-Digital Loggers Power network power switches:
-  WebPowerSwitch II
-  WebPowerSwitch III
-  WebPowerSwitch IV
-  WebPowerSwitch V
-  Ethernet Power Controller III
-
-Examples
---------
-
-*Connecting to a Digital Loggers Power switch*
-
->>> from dlipower import PowerSwitch
->>> switch = PowerSwitch(hostname='lpc.digital-loggers.com', userid='admin', password='4321')
-
-*Getting the power state (status) from the switch*
-Printing the switch object will print a table with the
-Outlet Number, Name and Power State
-
->>> switch
-DLIPowerSwitch at lpc.digital-loggers.com
-Outlet	Name           	State
-1	Battery Charger	     OFF
-2	K3 Power ON    	     ON
-3	Cisco Router   	     OFF
-4	WISP access poi	     ON
-5	Shack Computer 	     OFF
-6	Router         	     OFF
-7	2TB Drive      	     ON
-8	Cable Modem1   	     ON
-
-*Getting the name and powerswitch of the first outlet*
-The PowerSwitch has a series of Outlet objects, they
-will display their name and state if printed.
-
->>> switch[0]
-<dlipower_outlet 'Traffic light:OFF'>
-
-*Renaming the first outlet*
-Changing the "name" attribute of an outlet will
-rename the outlet on the powerswitch.
-
->>> switch[0].name = 'Battery Charger'
->>> switch[0]
-<dlipower_outlet 'Battery Charger:OFF'>
-
-*Turning the first outlet on*
-Individual outlets can be accessed uses normal
-list slicing operators.
-
->>> switch[0].on()
-False
->>> switch[0]
-<dlipower_outlet 'Battery Charger:ON'>
-
-*Turning all outlets off*
-The PowerSwitch() object supports iterating over
-the available outlets.
-
->>> for outlet in switch:
-...     outlet.off()
-...
-False
-False
-False
-False
-False
-False
-False
-False
->>> switch
-DLIPowerSwitch at lpc.digital-loggers.com
-Outlet	Name           	State
-1	Battery Charger	OFF
-2	K3 Power ON    	OFF
-3	Cisco Router   	OFF
-4	WISP access poi	OFF
-5	Shack Computer 	OFF
-6	Router         	OFF
-7	2TB Drive      	OFF
-8	Cable Modem1   	OFF
-"""
+# # See the accompanying LICENSE.txt file for terms.
+# """
+# Digital Loggers Web Power Switch Management
+#
+# The module provides a python class named
+# powerswitch that allows managing the web power
+# switch from python programs.
+#
+# When run as a script this acts as a command line utility to
+# manage the DLI Power switch.
+#
+# Notes
+# -----
+# This module has been tested against the following
+# Digital Loggers Power network power switches:
+#   WebPowerSwitch II
+#   WebPowerSwitch III
+#   WebPowerSwitch IV
+#   WebPowerSwitch V
+#   Ethernet Power Controller III
+#
+# Examples
+# --------
+#
+# *Connecting to a Digital Loggers Power switch*
+#
+# >>> from dlipower import PowerSwitch
+# >>> switch = PowerSwitch(hostname='lpc.digital-loggers.com', userid='admin', password='4321')
+#
+# *Getting the power state (status) from the switch*
+# Printing the switch object will print a table with the
+# Outlet Number, Name and Power State
+#
+# >>> switch
+# DLIPowerSwitch at lpc.digital-loggers.com
+# Outlet	Name           	State
+# 1	Battery Charger	     OFF
+# 2	K3 Power ON    	     ON
+# 3	Cisco Router   	     OFF
+# 4	WISP access poi	     ON
+# 5	Shack Computer 	     OFF
+# 6	Router         	     OFF
+# 7	2TB Drive      	     ON
+# 8	Cable Modem1   	     ON
+#
+# *Getting the name and powerswitch of the first outlet*
+# The PowerSwitch has a series of Outlet objects, they
+# will display their name and state if printed.
+#
+# >>> switch[0]
+# <dlipower_outlet 'Traffic light:OFF'>
+#
+# *Renaming the first outlet*
+# Changing the "name" attribute of an outlet will
+# rename the outlet on the powerswitch.
+#
+# >>> switch[0].name = 'Battery Charger'
+# >>> switch[0]
+# <dlipower_outlet 'Battery Charger:OFF'>
+#
+# *Turning the first outlet on*
+# Individual outlets can be accessed uses normal
+# list slicing operators.
+#
+# >>> switch[0].on()
+# False
+# >>> switch[0]
+# <dlipower_outlet 'Battery Charger:ON'>
+#
+# *Turning all outlets off*
+# The PowerSwitch() object supports iterating over
+# the available outlets.
+#
+# >>> for outlet in switch:
+# ...     outlet.off()
+# ...
+# False
+# False
+# False
+# False
+# False
+# False
+# False
+# False
+# >>> switch
+# DLIPowerSwitch at lpc.digital-loggers.com
+# Outlet	Name           	State
+# 1	Battery Charger	OFF
+# 2	K3 Power ON    	OFF
+# 3	Cisco Router   	OFF
+# 4	WISP access poi	OFF
+# 5	Shack Computer 	OFF
+# 6	Router         	OFF
+# 7	2TB Drive      	OFF
+# 8	Cable Modem1   	OFF
+# """
 
 import hashlib
 import logging
@@ -108,21 +108,27 @@ import requests.exceptions
 import time
 import urllib3
 from urllib.parse import quote
+from utils import init_log
 
 from bs4 import BeautifulSoup
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from config.config import Config
+from networking import NetworkedDevice
 
-logger = logging.getLogger(__name__)
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # Global settings
-TIMEOUT = 20
+TIMEOUT = 2
 RETRIES = 3
-CYCLETIME = 3
+CYCLE_TIME = 3
 CONFIG_DEFAULTS = {
     'timeout': TIMEOUT,
-    'cycletime': CYCLETIME,
+    'cycle_time': CYCLE_TIME,
     'userid': 'admin',
     'password': '4321',
     'hostname': '192.168.0.100'
@@ -220,42 +226,33 @@ class Outlet(object):
         self.rename(new_name)
 
 
-class PowerSwitch(object):
-    """ Powerswitch class to manage the Digital Loggers Web power switch """
+class PowerSwitch(NetworkedDevice):
+    """ PowerSwitch class to manage the Digital Loggers Web power switch """
     __len = 0
     login_timeout = 2.0
     secure_login = False
+    outlet_names: dict
 
-    def __init__(self, userid=None, password=None, hostname=None, timeout=None,
-                 cycletime=None, retries=None, use_https=False):
+    def __init__(self, name=None, use_https=False):
         """
-        Class initializaton
+        Class initialization
         """
-        if not retries:
-            retries = RETRIES
-        config = self.load_configuration()
-        if retries:
-            self.retries = retries
-        if userid:
-            self.userid = userid
-        else:
-            self.userid = config['userid']
-        if password:
-            self.password = password
-        else:
-            self.password = config['password']
-        if hostname:
-            self.hostname = hostname
-        else:
-            self.hostname = config['hostname']
-        if timeout:
-            self.timeout = float(timeout)
-        else:
-            self.timeout = config['timeout']
-        if cycletime:
-            self.cycletime = float(cycletime)
-        else:
-            self.cycletime = config['cycletime']
+        self.name = name
+        self.power_logger = logging.getLogger(f"power-switch-{name}")
+        init_log(self.power_logger)
+        self.power_logger.setLevel(logging.INFO)
+
+        config = Config().toml['power-switch'][name]
+        NetworkedDevice.__init__(self, config)
+
+        self.retries = config['retries'] if 'retries' in config else RETRIES
+        self.hostname = self.destination.address
+        self.userid = config['username'] if 'username' in config else 'admin'
+        self.password = config['password'] if 'password' in config else '1234'
+        self.timeout = config['timeout'] if 'timeout' in config else TIMEOUT
+        self.cycle_time = config['cycle_time'] if 'cycle_time' in config else CYCLE_TIME
+        self.outlet_names = config['outlets'] if 'outlets' in config else None
+
         self.scheme = 'http'
         if use_https:
             self.scheme = 'https'
@@ -263,6 +260,11 @@ class PowerSwitch(object):
         self._is_admin = True
         self.session = requests.Session()
         self.login()
+
+        if self.outlet_names:
+            for o, name in self.outlet_names.items():
+                if self.get_outlet_name(o) != name:
+                    self.set_outlet_name(o, name)
 
     def __len__(self):
         """
@@ -329,7 +331,7 @@ class PowerSwitch(object):
             response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout, allow_redirects=False)
             if response.is_redirect:
                 self.base_url = response.headers['Location'].rstrip('/')
-                logger.debug(f'Redirecting to: {self.base_url}')
+                self.power_logger.debug(f'Redirecting to: {self.base_url}')
                 response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout)
         except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
             self.session = None
@@ -412,7 +414,7 @@ class PowerSwitch(object):
         full_url = "%s/%s" % (self.base_url, url)
         result = None
         request = None
-        logger.debug(f'Requesting url: {full_url}')
+        self.power_logger.debug(f'Requesting url: {full_url}')
         for i in range(0, self.retries):
             try:
                 if self.secure_login and self.session:
@@ -420,14 +422,14 @@ class PowerSwitch(object):
                 else:
                     request = requests.get(full_url, auth=(self.userid, self.password,), timeout=self.timeout, verify=False, allow_redirects=True)  # nosec
             except requests.exceptions.RequestException as e:
-                logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
-                logger.exception("Caught exception %s", str(e))
+                self.power_logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
+                self.power_logger.exception("Caught exception %s", str(e))
                 continue
             if request.status_code == 200:
                 result = request.content
                 break
-        logger.debug('Response code: %s', request.status_code)
-        logger.debug(f'Response content: {result}')
+        self.power_logger.debug('Response code: %s', request.status_code)
+        self.power_logger.debug(f'Response content: {result}')
         return result
 
     def determine_outlet(self, outlet=None):
@@ -472,7 +474,12 @@ class PowerSwitch(object):
             False = Success
             True = Fail
         """
+        if self.status(outlet) == 'OFF':
+            self.power_logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already OFF")
+            return True
+
         self.geturl(url='outlet?%d=OFF' % self.determine_outlet(outlet))
+        self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) OFF")
         return self.status(outlet) != 'OFF'
 
     def on(self, outlet=0):
@@ -480,8 +487,19 @@ class PowerSwitch(object):
             False = Success
             True = Fail
         """
+        if self.status(outlet) == 'ON':
+            self.power_logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already ON")
+            return True
+
         self.geturl(url='outlet?%d=ON' % self.determine_outlet(outlet))
+        self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) ON")
         return self.status(outlet) != 'ON'
+
+    def is_on(self, outlet=0):
+        return self.status(outlet) == 'ON'
+
+    def is_off(self, outlet=0):
+        return self.status(outlet) == 'OFF'
 
     def cycle(self, outlet=0):
         """ Cycle power to an outlet
@@ -492,7 +510,7 @@ class PowerSwitch(object):
         """
         if self.off(outlet):
             return True
-        time.sleep(self.cycletime)
+        time.sleep(self.cycle_time)
         self.on(outlet)
         return False
 
@@ -506,7 +524,7 @@ class PowerSwitch(object):
         soup = BeautifulSoup(url, "html.parser")
         # Get the root of the table containing the port status info
         try:
-            root = soup.findAll('td', text='1')[0].parent.parent.parent
+            root = soup.findAll('td', string='1')[0].parent.parent.parent
         except IndexError:
             # Finding the root of the table with the outlet info failed
             # try again assuming we're seeing the table for a user
@@ -581,5 +599,64 @@ class PowerSwitch(object):
         return result
 
 
+class PowerSwitchFactory:
+    _instances = {}
+
+    @classmethod
+    def get_instance(cls, name: str) -> PowerSwitch:
+        if name not in cls._instances:
+            cls._instances[name] = PowerSwitch(name=name)
+
+        return cls._instances[name]
+
+
+class SwitchedPowerDevice:
+
+    def __init__(self, conf: dict):
+        """
+        We expect a 'power' entry in the configuration dictionary
+            power = {switch=<switch-name>, outlet=<outlet-number>}
+        """
+        if 'power' not in conf:
+            raise Exception(f"Missing 'power' entry in '{conf}'")
+
+        power_conf = conf['power']
+        if 'switch' not in power_conf or 'outlet' not in power_conf:
+            raise Exception(f"Either 'switch' or 'outlet' (or both) missing from configuration '{power_conf}'")
+
+        if not isinstance(power_conf['switch'], str):
+            power_conf['switch'] = str(power_conf['switch'])
+
+        if not isinstance(power_conf['outlet'], int):
+            power_conf['outlet'] = int(power_conf['outlet'])
+
+        self.switch = PowerSwitchFactory.get_instance(power_conf['switch'])
+        self.outlet = power_conf['outlet']
+        self.delay_after_on = power_conf['delay-after-on'] if 'delay-after-on' in power_conf else 0
+        self.switch_logger = self.switch.power_logger
+        self.switch_logger.setLevel(logging.INFO)
+
+    def power_on(self):
+        self.switch.on(self.outlet)
+        if self.delay_after_on:
+            self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON outlet '{self.outlet}'")
+            time.sleep(self.delay_after_on)
+
+    def power_off(self):
+        self.switch.off(self.outlet)
+
+    def is_on(self) -> bool:
+        return self.switch.status(outlet=self.outlet) == 'ON'
+
+    def is_off(self) -> bool:
+        return self.switch.status(outlet=self.outlet) == 'OFF'
+
+
 if __name__ == "__main__":  # pragma: no cover
-    PowerSwitch().printstatus()
+    sp = SwitchedPowerDevice({'power': {'switch': 1, 'outlet': 8}})
+
+    if sp.is_off():
+        sp.power_on()
+    time.sleep(2)
+    if sp.is_on():
+        sp.power_off()
