@@ -37,7 +37,7 @@ class TestDLIPowerPro(VCRTestCase):
     def test__dlipower__statuslist(self):
         switch = PowerSwitch(userid=self.userid, password=self.password, hostname=self.switch_hostname,
                              use_https=self.use_https)
-        result = switch.statuslist()
+        result = switch.status_list()
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), 8)
 

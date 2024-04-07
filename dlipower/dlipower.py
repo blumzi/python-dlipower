@@ -103,12 +103,14 @@ import logging
 import multiprocessing
 import os
 import json
+from typing import List
+
 import requests
 import requests.exceptions
 import time
 import urllib3
 from urllib.parse import quote
-from utils import init_log
+from utils import init_log, Component
 
 from bs4 import BeautifulSoup
 
@@ -226,7 +228,7 @@ class Outlet(object):
         self.rename(new_name)
 
 
-class PowerSwitch(NetworkedDevice):
+class PowerSwitch(Component, NetworkedDevice):
     """ PowerSwitch class to manage the Digital Loggers Web power switch """
     __len = 0
     login_timeout = 2.0
@@ -237,21 +239,28 @@ class PowerSwitch(NetworkedDevice):
         """
         Class initialization
         """
-        self.name = name
+        self._name = name
         self.power_logger = logging.getLogger(f"power-switch-{name}")
         init_log(self.power_logger)
         self.power_logger.setLevel(logging.INFO)
 
-        config = Config().toml['power-switch'][name]
-        NetworkedDevice.__init__(self, config)
+        self.conf = Config().toml['power-switch'][name]
+        NetworkedDevice.__init__(self, self.conf)
 
-        self.retries = config['retries'] if 'retries' in config else RETRIES
+        self.retries = self.conf['retries'] if 'retries' in self.conf else RETRIES
         self.hostname = self.destination.address
-        self.userid = config['username'] if 'username' in config else 'admin'
-        self.password = config['password'] if 'password' in config else '1234'
-        self.timeout = config['timeout'] if 'timeout' in config else TIMEOUT
-        self.cycle_time = config['cycle_time'] if 'cycle_time' in config else CYCLE_TIME
-        self.outlet_names = config['outlets'] if 'outlets' in config else None
+        self.userid = self.conf['username'] if 'username' in self.conf else 'admin'
+        self.password = self.conf['password'] if 'password' in self.conf else '1234'
+        self.timeout = self.conf['timeout'] if 'timeout' in self.conf else TIMEOUT
+        self.cycle_time = self.conf['cycle_time'] if 'cycle_time' in self.conf else CYCLE_TIME
+        self.num_outlets = 8
+        self.outlet_names = {}
+        for i in range(1, self.num_outlets+1):
+            if 'outlets' in self.conf:
+                self.outlet_names[str(i)] = self.conf['outlets'][str(i)] \
+                    if str(i) in self.conf['outlets'] else 'Unknown'
+            else:
+                self.outlet_names[str(i)] = 'Unknown'
 
         self.scheme = 'http'
         if use_https:
@@ -259,31 +268,39 @@ class PowerSwitch(NetworkedDevice):
         self.base_url = '%s://%s' % (self.scheme, self.hostname)
         self._is_admin = True
         self.session = requests.Session()
-        self.login()
+        self.detected = False
+        try:
+            self.login()
+        except:
+            pass
 
-        if self.outlet_names:
-            for o, name in self.outlet_names.items():
-                if self.get_outlet_name(o) != name:
-                    self.set_outlet_name(o, name)
+        if self.detected:
+            if self.outlet_names:
+                for o, name in self.outlet_names.items():
+                    if self.get_outlet_name(o) != name:
+                        self.set_outlet_name(o, name)
 
     def __len__(self):
         """
         :return: Number of outlets on the switch
         """
+        if not self.detected:
+            return 0
+
         if self.__len == 0:
-            self.__len = len(self.statuslist())
+            self.__len = len(self.status_list())
         return self.__len
 
     def __repr__(self):
         """
         display the representation
         """
-        if not self.statuslist():
+        if not self.status_list():
             return "Digital Loggers Web Powerswitch " \
                    "%s (UNCONNECTED)" % self.hostname
         output = 'DLIPowerSwitch at %s\n' \
                  'Outlet\t%-15.15s\tState\n' % (self.hostname, 'Name')
-        for item in self.statuslist():
+        for item in self.status_list():
             output += '%d\t%-15.15s\t%s\n' % (item[0], item[1], item[2])
         return output
 
@@ -291,7 +308,7 @@ class PowerSwitch(NetworkedDevice):
         """
         __repr__ in an html table format
         """
-        if not self.statuslist():
+        if not self.status_list():
             return "Digital Loggers Web Powerswitch " \
                    "%s (UNCONNECTED)" % self.hostname
         output = '<table>' \
@@ -300,7 +317,7 @@ class PowerSwitch(NetworkedDevice):
                  '<th>Outlet Number</th>' \
                  '<th>Outlet Name</th>' \
                  '<th>Outlet State</th></tr>\n' % self.hostname
-        for item in self.statuslist():
+        for item in self.status_list():
             output += '<tr><td>%d</td><td>%s</td><td>%s</td></tr>\n' % (
                 item[0], item[1], item[2])
         output += '</table>\n'
@@ -309,9 +326,9 @@ class PowerSwitch(NetworkedDevice):
     def __getitem__(self, index):
         outlets = []
         if isinstance(index, slice):
-            status = self.statuslist()[index.start:index.stop]
+            status = self.status_list()[index.start:index.stop]
         else:
-            status = [self.statuslist()[index]]
+            status = [self.status_list()[index]]
         for outlet_status in status:
             power_outlet = Outlet(
                 switch=self,
@@ -364,6 +381,7 @@ class PowerSwitch(NetworkedDevice):
         if response.status_code == 200:
             if 'Set-Cookie' in response.headers:
                 self.secure_login = True
+        self.detected = True
 
     def load_configuration(self):
         """ Return a configuration dictionary """
@@ -437,7 +455,7 @@ class PowerSwitch(NetworkedDevice):
             allows specifying the outlet by the name and making sure the
             returned outlet is an int
         """
-        outlets = self.statuslist()
+        outlets = self.status_list()
         if outlet and outlets and isinstance(outlet, str):
             for plug in outlets:
                 plug_name = plug[1]
@@ -454,7 +472,7 @@ class PowerSwitch(NetworkedDevice):
     def get_outlet_name(self, outlet=0):
         """ Return the name of the outlet """
         outlet = self.determine_outlet(outlet)
-        outlets = self.statuslist()
+        outlets = self.status_list()
         if outlets and outlet:
             for plug in outlets:
                 if int(plug[0]) == outlet:
@@ -474,32 +492,32 @@ class PowerSwitch(NetworkedDevice):
             False = Success
             True = Fail
         """
-        if self.status(outlet) == 'OFF':
+        if self.outlet_status(outlet) == 'OFF':
             self.power_logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already OFF")
             return True
 
         self.geturl(url='outlet?%d=OFF' % self.determine_outlet(outlet))
         self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) OFF")
-        return self.status(outlet) != 'OFF'
+        return self.outlet_status(outlet) != 'OFF'
 
     def on(self, outlet=0):
         """ Turn on power to an outlet
             False = Success
             True = Fail
         """
-        if self.status(outlet) == 'ON':
+        if self.outlet_status(outlet) == 'ON':
             self.power_logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already ON")
             return True
 
         self.geturl(url='outlet?%d=ON' % self.determine_outlet(outlet))
         self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) ON")
-        return self.status(outlet) != 'ON'
+        return self.outlet_status(outlet) != 'ON'
 
     def is_on(self, outlet=0):
-        return self.status(outlet) == 'ON'
+        return self.outlet_status(outlet) == 'ON'
 
     def is_off(self, outlet=0):
-        return self.status(outlet) == 'OFF'
+        return self.outlet_status(outlet) == 'OFF'
 
     def cycle(self, outlet=0):
         """ Cycle power to an outlet
@@ -508,17 +526,26 @@ class PowerSwitch(NetworkedDevice):
             Note, does not return any status info about the power on part of
             the operation by design
         """
-        if self.off(outlet):
-            return True
-        time.sleep(self.cycle_time)
-        self.on(outlet)
+        if self.is_off(outlet):
+            self.on(outlet)
+        else:
+            self.off(outlet)
+            time.sleep(self.cycle_time)
+            self.on(outlet)
         return False
 
-    def statuslist(self):
+    def status_list(self):
+        if not self.detected:
+            return None
+
         """ Return the status of all outlets in a list,
         each item will contain 3 items plugnumber, hostname and state  """
         outlets = []
-        url = self.geturl('index.htm')
+        try:
+            url = self.geturl('index.htm')
+        except TimeoutError:
+            return None
+
         if not url:
             return None
         soup = BeautifulSoup(url, "html.parser")
@@ -547,26 +574,40 @@ class PowerSwitch(NetworkedDevice):
 
     def printstatus(self):
         """ Print the status off all the outlets as a table to stdout """
-        if not self.statuslist():
+        if not self.status_list():
             print("Unable to communicate to the Web power switch at %s" % self.hostname)
             return None
         print('Outlet\t%-15.15s\tState' % 'Name')
-        for item in self.statuslist():
+        for item in self.status_list():
             print('%d\t%-15.15s\t%s' % (item[0], item[1], item[2]))
         return
 
-    def status(self, outlet=1):
+    def outlet_status(self, outlet=1):
+        if self.detected:
+            outlet_states = self.status_list()
+            st = outlet_states[outlet-1]
+            return st[2]
+        else:
+            return 'Unknown'
+
+    def status(self):
         """
-        Return the status of an outlet, returned value will be one of:
-        ON, OFF, Unknown
+        Return the status of the PowerSwitch
         """
-        outlet = self.determine_outlet(outlet)
-        outlets = self.statuslist()
-        if outlets and outlet:
-            for plug in outlets:
-                if plug[0] == outlet:
-                    return plug[2]
-        return 'Unknown'
+        ret = {
+            'ipaddr': self.ipaddress,
+            'detected': self.detected,
+            'outlets': {}
+        }
+
+        if self.detected:
+            outlet_states = self.status_list()
+            ret['outlets'] = {str(i+1): {'name': outlet_states[i][1], 'state': outlet_states[i][2]}
+                              for i in range(0, len(outlet_states))}
+        else:
+            ret['outlets'] = {str(i+1): {'name': self.outlet_names[str(i+1)], 'state': 'Unknown'}
+                              for i in range(0, len(self.outlet_names))}
+        return ret
 
     def command_on_outlets(self, command, outlets):
         """
@@ -575,6 +616,9 @@ class PowerSwitch(NetworkedDevice):
         outlets in parallel the return code will be failure if any operation
         fails.  Operations that return a string will return a list of strings.
         """
+        if not self.detected:
+            return
+
         if len(outlets) == 1:
             result = getattr(self, command)(outlets[0])
             if isinstance(result, bool):
@@ -597,6 +641,27 @@ class PowerSwitch(NetworkedDevice):
                     return True
             return result[0]
         return result
+
+    def operational(self) -> bool:
+        return self.detected
+
+    def why_not_operational(self) -> List[str]:
+        ret = []
+        if not self.detected:
+            ret.append(f"not detected")
+        return ret
+
+    def name(self) -> str:
+        return self._name
+
+    def abort(self):
+        pass
+
+    def startup(self):
+        pass
+
+    def shutdown(self):
+        pass
 
 
 class PowerSwitchFactory:
@@ -630,26 +695,35 @@ class SwitchedPowerDevice:
         if not isinstance(power_conf['outlet'], int):
             power_conf['outlet'] = int(power_conf['outlet'])
 
-        self.switch = PowerSwitchFactory.get_instance(power_conf['switch'])
+        self.switch: PowerSwitch | None = None
+        try:
+            self.switch = PowerSwitchFactory.get_instance(power_conf['switch'])
+        except Exception as e:
+            pass
         self.outlet = power_conf['outlet']
         self.delay_after_on = power_conf['delay-after-on'] if 'delay-after-on' in power_conf else 0
-        self.switch_logger = self.switch.power_logger
-        self.switch_logger.setLevel(logging.INFO)
+        if self.switch:
+            self.switch_logger = self.switch.power_logger
+            self.switch_logger.setLevel(logging.INFO)
 
     def power_on(self):
-        self.switch.on(self.outlet)
-        if self.delay_after_on:
-            self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON outlet '{self.outlet}'")
-            time.sleep(self.delay_after_on)
+        if self.switch:
+            self.switch.on(self.outlet)
+            if self.delay_after_on:
+                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON outlet '{self.outlet}'")
+                time.sleep(self.delay_after_on)
 
     def power_off(self):
-        self.switch.off(self.outlet)
+        if self.switch:
+            self.switch.off(self.outlet)
 
     def is_on(self) -> bool:
-        return self.switch.status(outlet=self.outlet) == 'ON'
+        if not self.switch:
+            return False
+        return self.switch.outlet_status(outlet=self.outlet) == 'ON'
 
     def is_off(self) -> bool:
-        return self.switch.status(outlet=self.outlet) == 'OFF'
+        return self.switch.outlet_status(outlet=self.outlet) == 'OFF'
 
 
 if __name__ == "__main__":  # pragma: no cover
