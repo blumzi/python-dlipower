@@ -642,15 +642,19 @@ class PowerSwitch(Component, NetworkedDevice):
             return result[0]
         return result
 
+    @property
     def operational(self) -> bool:
         return self.detected
 
+    @property
     def why_not_operational(self) -> List[str]:
         ret = []
+        label = f"power-switch '{self.name}'"
         if not self.detected:
-            ret.append(f"not detected")
+            ret.append(f"{label} not detected")
         return ret
 
+    @property
     def name(self) -> str:
         return self._name
 
