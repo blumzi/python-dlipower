@@ -101,7 +101,6 @@
 import hashlib
 import logging
 import multiprocessing
-import os
 import json
 from typing import List
 
@@ -117,7 +116,7 @@ from bs4 import BeautifulSoup
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from config.config import Config
+from config import Config
 from networking import NetworkedDevice
 
 
