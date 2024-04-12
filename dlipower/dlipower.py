@@ -109,15 +109,15 @@ import requests.exceptions
 import time
 import urllib3
 from urllib.parse import quote
-from utils import init_log, Component
+from common.utils import init_log, Component
 
 from bs4 import BeautifulSoup
 
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from config import Config
-from networking import NetworkedDevice
+from common.config import Config
+from common.networking import NetworkedDevice
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -596,6 +596,8 @@ class PowerSwitch(Component, NetworkedDevice):
         ret = {
             'ipaddr': self.ipaddress,
             'detected': self.detected,
+            'operational': self.operational,
+            'why_not_operational': self.why_not_operational,
             'outlets': {}
         }
 
@@ -713,12 +715,20 @@ class SwitchedPowerDevice:
         if self.switch:
             self.switch.on(self.outlet)
             if self.delay_after_on:
-                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON outlet '{self.outlet}'")
+                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON '{self.outlet.name}'")
                 time.sleep(self.delay_after_on)
 
     def power_off(self):
         if self.switch:
             self.switch.off(self.outlet)
+
+    def cycle(self):
+        if self.is_on():
+            self.power_off()
+            time.sleep(3)
+            self.power_on()
+        else:
+            self.power_on()
 
     def is_on(self) -> bool:
         if not self.switch:
