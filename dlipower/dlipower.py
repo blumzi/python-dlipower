@@ -146,7 +146,7 @@ def _call_it(params):   # pragma: no cover
 
 class DLIPowerException(Exception):
     """
-    An error occurred talking the the DLI Power switch
+    An error occurred talking the DLI Power switch
     """
     pass
 
@@ -554,7 +554,7 @@ class PowerSwitch(Component, NetworkedDevice):
         except IndexError:
             # Finding the root of the table with the outlet info failed
             # try again assuming we're seeing the table for a user
-            # account insteaed of the admin account (tables are different)
+            # account instead of the admin account (tables are different)
             try:
                 self._is_admin = False
                 root = soup.findAll('th', text='#')[0].parent.parent.parent
