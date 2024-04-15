@@ -679,6 +679,9 @@ class PowerSwitchFactory:
 
         return cls._instances[name]
 
+    def __init__(self):
+        pass
+
 
 class SwitchedPowerDevice:
 
