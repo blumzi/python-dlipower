@@ -267,7 +267,7 @@ class PowerSwitch(Component, NetworkedDevice):
         self.base_url = '%s://%s' % (self.scheme, self.hostname)
         self._is_admin = True
         self.session = requests.Session()
-        self.detected = False
+        self._detected = False
         try:
             self.login()
         except:
@@ -380,7 +380,7 @@ class PowerSwitch(Component, NetworkedDevice):
         if response.status_code == 200:
             if 'Set-Cookie' in response.headers:
                 self.secure_login = True
-        self.detected = True
+        self._detected = True
 
     def load_configuration(self):
         """ Return a configuration dictionary """
@@ -437,7 +437,8 @@ class PowerSwitch(Component, NetworkedDevice):
                 if self.secure_login and self.session:
                     request = self.session.get(full_url, timeout=self.timeout, verify=False, allow_redirects=True)
                 else:
-                    request = requests.get(full_url, auth=(self.userid, self.password,), timeout=self.timeout, verify=False, allow_redirects=True)  # nosec
+                    request = requests.get(full_url, auth=(self.userid, self.password,),
+                                           timeout=self.timeout, verify=False, allow_redirects=True)
             except requests.exceptions.RequestException as e:
                 self.power_logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
                 self.power_logger.exception("Caught exception %s", str(e))
@@ -496,7 +497,7 @@ class PowerSwitch(Component, NetworkedDevice):
             return True
 
         self.geturl(url='outlet?%d=OFF' % self.determine_outlet(outlet))
-        self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) OFF")
+        self.power_logger.info(f"Turned outlet '{outlet}' OFF ({self.get_outlet_name(outlet)})")
         return self.outlet_status(outlet) != 'OFF'
 
     def on(self, outlet=0):
@@ -509,7 +510,7 @@ class PowerSwitch(Component, NetworkedDevice):
             return True
 
         self.geturl(url='outlet?%d=ON' % self.determine_outlet(outlet))
-        self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) ON")
+        self.power_logger.info(f"Turned outlet '{outlet}' ON ({self.get_outlet_name(outlet)})")
         return self.outlet_status(outlet) != 'ON'
 
     def is_on(self, outlet=0):
@@ -584,6 +585,8 @@ class PowerSwitch(Component, NetworkedDevice):
     def outlet_status(self, outlet=1):
         if self.detected:
             outlet_states = self.status_list()
+            if outlet_states is None:
+                return 'Unknown'
             st = outlet_states[outlet-1]
             return st[2]
         else:
@@ -609,6 +612,10 @@ class PowerSwitch(Component, NetworkedDevice):
             ret['outlets'] = {str(i+1): {'name': self.outlet_names[str(i+1)], 'state': 'Unknown'}
                               for i in range(0, len(self.outlet_names))}
         return ret
+
+    @property
+    def connected(self) -> bool:
+        return self.detected
 
     def command_on_outlets(self, command, outlets):
         """
@@ -668,6 +675,10 @@ class PowerSwitch(Component, NetworkedDevice):
     def shutdown(self):
         pass
 
+    @property
+    def detected(self) -> bool:
+        return self._detected
+
 
 class PowerSwitchFactory:
     _instances = {}
@@ -715,14 +726,15 @@ class SwitchedPowerDevice:
             self.switch_logger.setLevel(logging.INFO)
 
     def power_on(self):
-        if self.switch:
+        if self.switch and not self.switch.is_on(self.outlet):
             self.switch.on(self.outlet)
             if self.delay_after_on:
-                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON '{self.outlet.name}'")
+                outlet_name = self.switch.get_outlet_name(self.outlet)
+                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON ({outlet_name})")
                 time.sleep(self.delay_after_on)
 
     def power_off(self):
-        if self.switch:
+        if self.switch and not self.switch.is_off(self.outlet):
             self.switch.off(self.outlet)
 
     def cycle(self):
