@@ -229,6 +229,11 @@ class Outlet(object):
 
 class PowerSwitch(Component, NetworkedDevice):
     """ PowerSwitch class to manage the Digital Loggers Web power switch """
+
+    @property
+    def shut_down(self) -> bool:
+        return False
+
     __len = 0
     login_timeout = 2.0
     secure_login = False
@@ -371,7 +376,8 @@ class PowerSwitch(Component, NetworkedDevice):
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
 
         try:
-            response = self.session.post('%s/login.tgi' % self.base_url, headers=headers, data=data, timeout=self.timeout, verify=False)
+            response = self.session.post('%s/login.tgi' % self.base_url, headers=headers, data=data,
+                                         timeout=self.timeout, verify=False)
         except requests.exceptions.ConnectTimeout:
             self.secure_login = False
             self.session = None
@@ -380,7 +386,7 @@ class PowerSwitch(Component, NetworkedDevice):
         if response.status_code == 200:
             if 'Set-Cookie' in response.headers:
                 self.secure_login = True
-        self._detected = True
+            self._detected = True
 
     def load_configuration(self):
         """ Return a configuration dictionary """
