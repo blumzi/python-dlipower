@@ -231,7 +231,7 @@ class PowerSwitch(Component, NetworkedDevice):
     """ PowerSwitch class to manage the Digital Loggers Web power switch """
 
     @property
-    def shut_down(self) -> bool:
+    def was_shut_down(self) -> bool:
         return False
 
     __len = 0
@@ -758,6 +758,11 @@ class SwitchedPowerDevice:
 
     def is_off(self) -> bool:
         return self.switch.outlet_status(outlet=self.outlet) == 'OFF'
+
+    def power_status(self):
+        return {
+            'powered': self.is_on(),
+        }
 
 
 if __name__ == "__main__":  # pragma: no cover
