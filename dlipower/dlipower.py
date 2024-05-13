@@ -231,6 +231,10 @@ class PowerSwitch(Component, NetworkedDevice):
     """ PowerSwitch class to manage the Digital Loggers Web power switch """
 
     @property
+    def detected(self) -> bool:
+        return self._detected
+
+    @property
     def was_shut_down(self) -> bool:
         return False
 
@@ -278,7 +282,7 @@ class PowerSwitch(Component, NetworkedDevice):
         except:
             pass
 
-        if self.detected:
+        if self._detected:
             if self.outlet_names:
                 for o, name in self.outlet_names.items():
                     if self.get_outlet_name(o) != name:
@@ -678,10 +682,6 @@ class PowerSwitch(Component, NetworkedDevice):
 
     def shutdown(self):
         pass
-
-    @property
-    def detected(self) -> bool:
-        return self._detected
 
 
 class PowerSwitchFactory:
