@@ -612,8 +612,9 @@ class PowerSwitch(Component, NetworkedDevice):
         }
         if self.detected:
             outlet_states = self.status_list()
-            ret['outlets'] = {str(i+1): {'name': outlet_states[i][1], 'state': outlet_states[i][2]}
-                              for i in range(0, len(outlet_states))}
+            if outlet_states is not None and len(outlet_states) != 0:
+                ret['outlets'] = {str(i+1): {'name': outlet_states[i][1], 'state': outlet_states[i][2]}
+                                  for i in range(0, len(outlet_states))}
         return ret
 
     @property
