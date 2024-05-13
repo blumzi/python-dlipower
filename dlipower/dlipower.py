@@ -607,16 +607,13 @@ class PowerSwitch(Component, NetworkedDevice):
             'detected': self.detected,
             'operational': self.operational,
             'why_not_operational': self.why_not_operational,
-            'outlets': {}
+            'outlets': {str(i + 1): {'name': self.outlet_names[str(i + 1)], 'state': 'Unknown'}
+                        for i in range(0, len(self.outlet_names))}
         }
-
         if self.detected:
             outlet_states = self.status_list()
             ret['outlets'] = {str(i+1): {'name': outlet_states[i][1], 'state': outlet_states[i][2]}
                               for i in range(0, len(outlet_states))}
-        else:
-            ret['outlets'] = {str(i+1): {'name': self.outlet_names[str(i+1)], 'state': 'Unknown'}
-                              for i in range(0, len(self.outlet_names))}
         return ret
 
     @property
