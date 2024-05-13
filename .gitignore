@@ -11,8 +11,8 @@ nosetests.xml
 /venv
 /dist
 
-dlipower/package_metadata.json
 /.ipynb_checkpoints
 /Untitled.ipynb
 /coverage.xml
 /pytest_*.xml
+**/__pycache__
