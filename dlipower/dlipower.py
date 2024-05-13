@@ -229,6 +229,19 @@ class Outlet(object):
 
 class PowerSwitch(Component, NetworkedDevice):
     """ PowerSwitch class to manage the Digital Loggers Web power switch """
+
+    @property
+    def detected(self) -> bool:
+        return self._detected
+
+    @property
+    def connected(self) -> bool:
+        return self.connected
+
+    @property
+    def was_shut_down(self):
+        return False
+
     __len = 0
     login_timeout = 2.0
     secure_login = False
@@ -267,13 +280,13 @@ class PowerSwitch(Component, NetworkedDevice):
         self.base_url = '%s://%s' % (self.scheme, self.hostname)
         self._is_admin = True
         self.session = requests.Session()
-        self.detected = False
+        self._detected = False
         try:
             self.login()
         except:
             pass
 
-        if self.detected:
+        if self._detected:
             if self.outlet_names:
                 for o, name in self.outlet_names.items():
                     if self.get_outlet_name(o) != name:
@@ -380,7 +393,7 @@ class PowerSwitch(Component, NetworkedDevice):
         if response.status_code == 200:
             if 'Set-Cookie' in response.headers:
                 self.secure_login = True
-        self.detected = True
+        self._detected = True
 
     def load_configuration(self):
         """ Return a configuration dictionary """
@@ -715,7 +728,8 @@ class SwitchedPowerDevice:
         if self.switch:
             self.switch.on(self.outlet)
             if self.delay_after_on:
-                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON '{self.outlet.name}'")
+                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering" +
+                                        f" ON '{self.switch.outlet_names[str(self.outlet)]}'")
                 time.sleep(self.delay_after_on)
 
     def power_off(self):
