@@ -146,7 +146,7 @@ def _call_it(params):   # pragma: no cover
 
 class DLIPowerException(Exception):
     """
-    An error occurred talking the the DLI Power switch
+    An error occurred talking the DLI Power switch
     """
     pass
 
@@ -235,11 +235,7 @@ class PowerSwitch(Component, NetworkedDevice):
         return self._detected
 
     @property
-    def connected(self) -> bool:
-        return self.connected
-
-    @property
-    def was_shut_down(self):
+    def was_shut_down(self) -> bool:
         return False
 
     __len = 0
@@ -384,7 +380,8 @@ class PowerSwitch(Component, NetworkedDevice):
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
 
         try:
-            response = self.session.post('%s/login.tgi' % self.base_url, headers=headers, data=data, timeout=self.timeout, verify=False)
+            response = self.session.post('%s/login.tgi' % self.base_url, headers=headers, data=data,
+                                         timeout=self.timeout, verify=False)
         except requests.exceptions.ConnectTimeout:
             self.secure_login = False
             self.session = None
@@ -393,7 +390,7 @@ class PowerSwitch(Component, NetworkedDevice):
         if response.status_code == 200:
             if 'Set-Cookie' in response.headers:
                 self.secure_login = True
-        self._detected = True
+            self._detected = True
 
     def load_configuration(self):
         """ Return a configuration dictionary """
@@ -450,7 +447,8 @@ class PowerSwitch(Component, NetworkedDevice):
                 if self.secure_login and self.session:
                     request = self.session.get(full_url, timeout=self.timeout, verify=False, allow_redirects=True)
                 else:
-                    request = requests.get(full_url, auth=(self.userid, self.password,), timeout=self.timeout, verify=False, allow_redirects=True)  # nosec
+                    request = requests.get(full_url, auth=(self.userid, self.password,),
+                                           timeout=self.timeout, verify=False, allow_redirects=True)
             except requests.exceptions.RequestException as e:
                 self.power_logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
                 self.power_logger.exception("Caught exception %s", str(e))
@@ -509,7 +507,7 @@ class PowerSwitch(Component, NetworkedDevice):
             return True
 
         self.geturl(url='outlet?%d=OFF' % self.determine_outlet(outlet))
-        self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) OFF")
+        self.power_logger.info(f"Turned outlet '{outlet}' OFF ({self.get_outlet_name(outlet)})")
         return self.outlet_status(outlet) != 'OFF'
 
     def on(self, outlet=0):
@@ -522,7 +520,7 @@ class PowerSwitch(Component, NetworkedDevice):
             return True
 
         self.geturl(url='outlet?%d=ON' % self.determine_outlet(outlet))
-        self.power_logger.info(f"Turned outlet '{outlet}' ({self.get_outlet_name(outlet)}) ON")
+        self.power_logger.info(f"Turned outlet '{outlet}' ON ({self.get_outlet_name(outlet)})")
         return self.outlet_status(outlet) != 'ON'
 
     def is_on(self, outlet=0):
@@ -567,7 +565,7 @@ class PowerSwitch(Component, NetworkedDevice):
         except IndexError:
             # Finding the root of the table with the outlet info failed
             # try again assuming we're seeing the table for a user
-            # account insteaed of the admin account (tables are different)
+            # account instead of the admin account (tables are different)
             try:
                 self._is_admin = False
                 root = soup.findAll('th', text='#')[0].parent.parent.parent
@@ -597,6 +595,8 @@ class PowerSwitch(Component, NetworkedDevice):
     def outlet_status(self, outlet=1):
         if self.detected:
             outlet_states = self.status_list()
+            if outlet_states is None:
+                return 'Unknown'
             st = outlet_states[outlet-1]
             return st[2]
         else:
@@ -611,17 +611,18 @@ class PowerSwitch(Component, NetworkedDevice):
             'detected': self.detected,
             'operational': self.operational,
             'why_not_operational': self.why_not_operational,
-            'outlets': {}
+            'outlets': {str(i + 1): {'name': self.outlet_names[str(i + 1)], 'state': 'Unknown'}
+                        for i in range(0, len(self.outlet_names))}
         }
-
         if self.detected:
             outlet_states = self.status_list()
             ret['outlets'] = {str(i+1): {'name': outlet_states[i][1], 'state': outlet_states[i][2]}
                               for i in range(0, len(outlet_states))}
-        else:
-            ret['outlets'] = {str(i+1): {'name': self.outlet_names[str(i+1)], 'state': 'Unknown'}
-                              for i in range(0, len(self.outlet_names))}
         return ret
+
+    @property
+    def connected(self) -> bool:
+        return self.detected
 
     def command_on_outlets(self, command, outlets):
         """
@@ -692,6 +693,9 @@ class PowerSwitchFactory:
 
         return cls._instances[name]
 
+    def __init__(self):
+        pass
+
 
 class SwitchedPowerDevice:
 
@@ -725,15 +729,15 @@ class SwitchedPowerDevice:
             self.switch_logger.setLevel(logging.INFO)
 
     def power_on(self):
-        if self.switch:
+        if self.switch and not self.switch.is_on(self.outlet):
             self.switch.on(self.outlet)
             if self.delay_after_on:
-                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering" +
-                                        f" ON '{self.switch.outlet_names[str(self.outlet)]}'")
+                outlet_name = self.switch.get_outlet_name(self.outlet)
+                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON ({outlet_name})")
                 time.sleep(self.delay_after_on)
 
     def power_off(self):
-        if self.switch:
+        if self.switch and not self.switch.is_off(self.outlet):
             self.switch.off(self.outlet)
 
     def cycle(self):
@@ -751,6 +755,11 @@ class SwitchedPowerDevice:
 
     def is_off(self) -> bool:
         return self.switch.outlet_status(outlet=self.outlet) == 'OFF'
+
+    def power_status(self):
+        return {
+            'powered': self.is_on(),
+        }
 
 
 if __name__ == "__main__":  # pragma: no cover
