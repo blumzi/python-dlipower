@@ -119,6 +119,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from common.config import Config
 from common.networking import NetworkedDevice
 
+logger = logging.getLogger('master.unit.dlipower')
+logger.setLevel(logging.INFO)
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -248,9 +251,9 @@ class PowerSwitch(Component, NetworkedDevice):
         Class initialization
         """
         self._name = name
-        self.power_logger = logging.getLogger(f"power-switch-{name}")
-        init_log(self.power_logger)
-        self.power_logger.setLevel(logging.INFO)
+        # logger = logging.getLogger(f"power-switch-{name}")
+        # init_log(logger)
+        # logger.setLevel(logging.INFO)
 
         self.conf = Config().toml['power-switch'][name]
         NetworkedDevice.__init__(self, self.conf)
@@ -356,7 +359,7 @@ class PowerSwitch(Component, NetworkedDevice):
             response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout, allow_redirects=False)
             if response.is_redirect:
                 self.base_url = response.headers['Location'].rstrip('/')
-                self.power_logger.debug(f'Redirecting to: {self.base_url}')
+                logger.debug(f'Redirecting to: {self.base_url}')
                 response = self.session.get(self.base_url, verify=False, timeout=self.login_timeout)
         except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
             self.session = None
@@ -441,7 +444,7 @@ class PowerSwitch(Component, NetworkedDevice):
         full_url = "%s/%s" % (self.base_url, url)
         result = None
         request = None
-        self.power_logger.debug(f'Requesting url: {full_url}')
+        logger.debug(f'Requesting url: {full_url}')
         for i in range(0, self.retries):
             try:
                 if self.secure_login and self.session:
@@ -450,14 +453,14 @@ class PowerSwitch(Component, NetworkedDevice):
                     request = requests.get(full_url, auth=(self.userid, self.password,),
                                            timeout=self.timeout, verify=False, allow_redirects=True)
             except requests.exceptions.RequestException as e:
-                self.power_logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
-                self.power_logger.exception("Caught exception %s", str(e))
+                logger.warning("Request timed out - %d retries left.", self.retries - i - 1)
+                logger.exception("Caught exception %s", str(e))
                 continue
             if request.status_code == 200:
                 result = request.content
                 break
-        self.power_logger.debug('Response code: %s', request.status_code)
-        self.power_logger.debug(f'Response content: {result}')
+        logger.debug('Response code: %s', request.status_code)
+        logger.debug(f'Response content: {result}')
         return result
 
     def determine_outlet(self, outlet=None):
@@ -503,11 +506,11 @@ class PowerSwitch(Component, NetworkedDevice):
             True = Fail
         """
         if self.outlet_status(outlet) == 'OFF':
-            self.power_logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already OFF")
+            logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already OFF")
             return True
 
         self.geturl(url='outlet?%d=OFF' % self.determine_outlet(outlet))
-        self.power_logger.info(f"Turned outlet '{outlet}' OFF ({self.get_outlet_name(outlet)})")
+        logger.info(f"Turned outlet '{outlet}' OFF ({self.get_outlet_name(outlet)})")
         return self.outlet_status(outlet) != 'OFF'
 
     def on(self, outlet=0):
@@ -516,11 +519,11 @@ class PowerSwitch(Component, NetworkedDevice):
             True = Fail
         """
         if self.outlet_status(outlet) == 'ON':
-            self.power_logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already ON")
+            logger.info(f"Outlet '{outlet}' ({self.get_outlet_name(outlet)}) already ON")
             return True
 
         self.geturl(url='outlet?%d=ON' % self.determine_outlet(outlet))
-        self.power_logger.info(f"Turned outlet '{outlet}' ON ({self.get_outlet_name(outlet)})")
+        logger.info(f"Turned outlet '{outlet}' ON ({self.get_outlet_name(outlet)})")
         return self.outlet_status(outlet) != 'ON'
 
     def is_on(self, outlet=0):
@@ -725,16 +728,16 @@ class SwitchedPowerDevice:
             pass
         self.outlet = power_conf['outlet']
         self.delay_after_on = power_conf['delay-after-on'] if 'delay-after-on' in power_conf else 0
-        if self.switch:
-            self.switch_logger = self.switch.power_logger
-            self.switch_logger.setLevel(logging.INFO)
+        # if self.switch:
+            # logger = self.switch.power_logger
+            # logger.setLevel(logging.INFO)
 
     def power_on(self):
         if self.switch and not self.switch.is_on(self.outlet):
             self.switch.on(self.outlet)
             if self.delay_after_on:
                 outlet_name = self.switch.get_outlet_name(self.outlet)
-                self.switch_logger.info(f"delaying {self.delay_after_on} sec. after powering ON ({outlet_name})")
+                logger.info(f"delaying {self.delay_after_on} sec. after powering ON ({outlet_name})")
                 time.sleep(self.delay_after_on)
 
     def power_off(self):
