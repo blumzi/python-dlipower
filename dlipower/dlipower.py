@@ -120,7 +120,10 @@ from common.config import Config
 from common.networking import NetworkedDevice
 
 logger = logging.getLogger('master.unit.dlipower')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARNING)            # less verbose
+
+urllib3_logger = logging.getLogger('urllib3')
+urllib3_logger.setLevel(logging.WARNING)    # less verbose
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
