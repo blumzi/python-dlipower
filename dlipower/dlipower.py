@@ -254,9 +254,6 @@ class PowerSwitch(Component, NetworkedDevice):
         Class initialization
         """
         self._name = name
-        # logger = logging.getLogger(f"power-switch-{name}")
-        # init_log(logger)
-        # logger.setLevel(logging.INFO)
 
         self.conf = Config().toml['power-switch'][name]
         NetworkedDevice.__init__(self, self.conf)
