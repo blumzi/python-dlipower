@@ -102,6 +102,7 @@ import hashlib
 import logging
 import multiprocessing
 import json
+import socket
 from typing import List
 
 import requests
@@ -256,6 +257,17 @@ class PowerSwitch(Component, NetworkedDevice):
         self._name = name
 
         self.conf = Config().toml['power-switch'][name]
+        if 'address' not in self.conf['network'] or self.conf['network']['address'] == '':
+            #
+            # If the conf['network']['address'] is left empty we derive it from the current
+            #  machine's hostname by adding 'ps' after 'mast' and adding the '.weizmann.ac.il'
+            #  suffix (NOTE: the Windows resolver does not resolve 'mastpsw' unless
+            #  the suffix is added, the Linux resolver works :-)
+            #
+            hostname = socket.gethostname()
+            hostname = hostname.replace('mast', 'mastps') + '.weizmann.ac.il'
+            ipaddr = socket.gethostbyname(hostname)
+            self.conf['network']['address'] = ipaddr
         NetworkedDevice.__init__(self, self.conf)
 
         self.retries = self.conf['retries'] if 'retries' in self.conf else RETRIES
