@@ -103,13 +103,14 @@ import logging
 import multiprocessing
 import json
 from typing import List
+from copy import deepcopy
 
 import requests
 import requests.exceptions
 import time
 import urllib3
 from urllib.parse import quote
-from common.utils import init_log, Component
+from common.utils import Component
 
 from bs4 import BeautifulSoup
 
@@ -249,17 +250,41 @@ class PowerSwitch(Component, NetworkedDevice):
     secure_login = False
     outlet_names: dict
 
-    def __init__(self, name=None, use_https=False):
+    def __init__(self,
+                 host: str | None = None,
+                 conf: dict = None,
+                 use_https: bool = False,
+                 unit: bool = False,
+                 upload_outlet_names: bool = True):
         """
         Class initialization
-        """
-        self._name = name
 
-        self.conf = Config().toml['power-switch'][name]
+        Parameters
+        ----------
+        host: Either a host name (gets resolved into ipaddr) or an ipaddr (ipv4) of the DLI switch
+        conf: Provides a full configuration dictionary (otherwise taken from Config().toml)
+        use_https: Instead of the (default) http
+        unit: Loads the generic 'power-switch.unit' configuration entry
+        upload_outlet_names: Load the outlet names to the DLI
+        """
+
+        if conf:
+            self.conf = conf
+        else:
+            self.conf: dict = deepcopy(Config().toml['power-switch'])
+            if unit and 'power-switch.unit' in Config().toml:
+                unit_conf = Config().toml['power-switch.unit']
+                self.conf.update(unit_conf)
+            if f'power-switch.{host}' in Config().toml:
+                specific_conf = Config().toml[f'power-switch.{host}']
+                self.conf.update(specific_conf)
+            if host:
+                self.conf['network']['host'] = host
+
         NetworkedDevice.__init__(self, self.conf)
+        self._name = self.destination.hostname
 
         self.retries = self.conf['retries'] if 'retries' in self.conf else RETRIES
-        self.hostname = self.destination.address
         self.userid = self.conf['username'] if 'username' in self.conf else 'admin'
         self.password = self.conf['password'] if 'password' in self.conf else '1234'
         self.timeout = self.conf['timeout'] if 'timeout' in self.conf else TIMEOUT
@@ -269,14 +294,14 @@ class PowerSwitch(Component, NetworkedDevice):
         for i in range(1, self.num_outlets+1):
             if 'outlets' in self.conf:
                 self.outlet_names[str(i)] = self.conf['outlets'][str(i)] \
-                    if str(i) in self.conf['outlets'] else 'Unknown'
+                    if str(i) in self.conf['outlets'] else f"Outlet {i}"
             else:
-                self.outlet_names[str(i)] = 'Unknown'
+                self.outlet_names[str(i)] = f"Outlet {i}"
 
         self.scheme = 'http'
         if use_https:
             self.scheme = 'https'
-        self.base_url = '%s://%s' % (self.scheme, self.hostname)
+        self.base_url = '%s://%s' % (self.scheme, self.destination.hostname)
         self._is_admin = True
         self.session = requests.Session()
         self._detected = False
@@ -285,11 +310,10 @@ class PowerSwitch(Component, NetworkedDevice):
         except:
             pass
 
-        if self._detected:
-            if self.outlet_names:
-                for o, name in self.outlet_names.items():
-                    if self.get_outlet_name(o) != name:
-                        self.set_outlet_name(o, name)
+        if self._detected and self.outlet_names and upload_outlet_names:
+            for o, name in self.outlet_names.items():
+                if self.get_outlet_name(o) != name:
+                    self.set_outlet_name(o, name)
 
     def __len__(self):
         """
@@ -308,9 +332,9 @@ class PowerSwitch(Component, NetworkedDevice):
         """
         if not self.status_list():
             return "Digital Loggers Web Powerswitch " \
-                   "%s (UNCONNECTED)" % self.hostname
+                   "%s (UNCONNECTED)" % self.destination.hostname
         output = 'DLIPowerSwitch at %s\n' \
-                 'Outlet\t%-15.15s\tState\n' % (self.hostname, 'Name')
+                 'Outlet\t%-15.15s\tState\n' % (self.destination.hostname, 'Name')
         for item in self.status_list():
             output += '%d\t%-15.15s\t%s\n' % (item[0], item[1], item[2])
         return output
@@ -321,13 +345,13 @@ class PowerSwitch(Component, NetworkedDevice):
         """
         if not self.status_list():
             return "Digital Loggers Web Powerswitch " \
-                   "%s (UNCONNECTED)" % self.hostname
+                   "%s (UNCONNECTED)" % self.destination.hostname
         output = '<table>' \
                  '<tr><th colspan="3">DLI Web Powerswitch at %s</th></tr>' \
                  '<tr>' \
                  '<th>Outlet Number</th>' \
                  '<th>Outlet Name</th>' \
-                 '<th>Outlet State</th></tr>\n' % self.hostname
+                 '<th>Outlet State</th></tr>\n' % self.destination.hostname
         for item in self.status_list():
             output += '<tr><td>%d</td><td>%s</td><td>%s</td></tr>\n' % (
                 item[0], item[1], item[2])
@@ -416,7 +440,7 @@ class PowerSwitch(Component, NetworkedDevice):
         # Overwrite the objects configuration over the existing config values
         config['userid'] = self.userid
         config['password'] = self.password
-        config['hostname'] = self.hostname
+        config['hostname'] = self.destination.hostname
         config['timeout'] = self.timeout
 
         # Write it to disk
@@ -588,7 +612,7 @@ class PowerSwitch(Component, NetworkedDevice):
     def printstatus(self):
         """ Print the status off all the outlets as a table to stdout """
         if not self.status_list():
-            print("Unable to communicate to the Web power switch at %s" % self.hostname)
+            print("Unable to communicate to the Web power switch at %s" % self.destination.hostname)
             return None
         print('Outlet\t%-15.15s\tState' % 'Name')
         for item in self.status_list():
@@ -610,7 +634,7 @@ class PowerSwitch(Component, NetworkedDevice):
         Return the status of the PowerSwitch
         """
         ret = {
-            'ipaddr': self.ipaddress,
+            'ipaddr': self.destination.ipaddr,
             'detected': self.detected,
             'operational': self.operational,
             'why_not_operational': self.why_not_operational,
@@ -691,11 +715,11 @@ class PowerSwitchFactory:
     _instances = {}
 
     @classmethod
-    def get_instance(cls, name: str) -> PowerSwitch:
-        if name not in cls._instances:
-            cls._instances[name] = PowerSwitch(name=name)
+    def get_instance(cls, host: str, upload_outlet_names: bool) -> PowerSwitch:
+        if host not in cls._instances:
+            cls._instances[host] = PowerSwitch(host=host, upload_outlet_names=upload_outlet_names)
 
-        return cls._instances[name]
+        return cls._instances[host]
 
     def __init__(self):
         pass
@@ -703,34 +727,40 @@ class PowerSwitchFactory:
 
 class SwitchedPowerDevice:
 
-    def __init__(self, conf: dict):
+    def __init__(self, host: str = None, outlet: int | None = None, conf: dict = None,
+                 upload_outlet_names: bool = True):
         """
         We expect a 'power' entry in the configuration dictionary
             power = {switch=<switch-name>, outlet=<outlet-number>}
+
+        A SwitchedPowerDevice consists of a PowerSwitch instance and an outlet number.
+        The PowerSwitch instance and outlet number can be specified in a number of ways:
+        - Directly via @host (hostname or ipaddress) and @outlet parameters
+        - Via a @conf dictionary such as { 'power': { 'switch': host, 'outlet': number } }
         """
-        if 'power' not in conf:
-            raise Exception(f"Missing 'power' entry in '{conf}'")
+        if conf:
+            if 'power' not in conf or ('switch' not in conf['power'] or 'outlet' not in conf['power']):
+                raise Exception(f"bad '{conf=}', expected: " + "{ 'power': { 'switch': host, 'outlet': number } }")
 
-        power_conf = conf['power']
-        if 'switch' not in power_conf or 'outlet' not in power_conf:
-            raise Exception(f"Either 'switch' or 'outlet' (or both) missing from configuration '{power_conf}'")
+            power_conf = conf['power']
 
-        if not isinstance(power_conf['switch'], str):
-            power_conf['switch'] = str(power_conf['switch'])
+            if not isinstance(power_conf['switch'], str):
+                power_conf['switch'] = str(power_conf['switch'])
 
-        if not isinstance(power_conf['outlet'], int):
-            power_conf['outlet'] = int(power_conf['outlet'])
+            if not isinstance(power_conf['outlet'], int):
+                power_conf['outlet'] = int(power_conf['outlet'])
+        elif host and outlet:
+            power_conf = {'switch': host, 'outlet': outlet}
+        else:
+            raise Exception(f"expected either 'conf' or ('host' and 'outlet') parameter(s)")
 
         self.switch: PowerSwitch | None = None
         try:
-            self.switch = PowerSwitchFactory.get_instance(power_conf['switch'])
-        except Exception as e:
+            self.switch = PowerSwitchFactory.get_instance(power_conf['switch'], upload_outlet_names=upload_outlet_names)
+        except:
             pass
         self.outlet = power_conf['outlet']
         self.delay_after_on = power_conf['delay-after-on'] if 'delay-after-on' in power_conf else 0
-        # if self.switch:
-            # logger = self.switch.power_logger
-            # logger.setLevel(logging.INFO)
 
     def power_on(self):
         if self.switch and not self.switch.is_on(self.outlet):
@@ -767,7 +797,7 @@ class SwitchedPowerDevice:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    sp = SwitchedPowerDevice({'power': {'switch': 1, 'outlet': 8}})
+    sp = SwitchedPowerDevice(conf={'power': {'switch': 1, 'outlet': 8}})
 
     if sp.is_off():
         sp.power_on()
