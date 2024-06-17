@@ -102,6 +102,7 @@ import hashlib
 import logging
 import multiprocessing
 import json
+import socket
 from typing import List
 from copy import deepcopy
 
@@ -251,37 +252,22 @@ class PowerSwitch(Component, NetworkedDevice):
     outlet_names: dict
 
     def __init__(self,
-                 host: str | None = None,
                  conf: dict = None,
                  use_https: bool = False,
-                 unit: bool = False,
                  upload_outlet_names: bool = True):
         """
         Class initialization
 
         Parameters
         ----------
-        host: Either a host name (gets resolved into ipaddr) or an ipaddr (ipv4) of the DLI switch
-        conf: Provides a full configuration dictionary (otherwise taken from Config().toml)
+        conf: Provides a full power_switch configuration dictionary
         use_https: Instead of the (default) http
-        unit: Loads the generic 'power-switch.unit' configuration entry
         upload_outlet_names: Load the outlet names to the DLI
         """
 
-        if conf:
-            self.conf = conf
-        else:
-            self.conf: dict = deepcopy(Config().toml['power-switch'])
-            if unit and 'power-switch.unit' in Config().toml:
-                unit_conf = Config().toml['power-switch.unit']
-                self.conf.update(unit_conf)
-            if f'power-switch.{host}' in Config().toml:
-                specific_conf = Config().toml[f'power-switch.{host}']
-                self.conf.update(specific_conf)
-            if host:
-                self.conf['network']['host'] = host
+        self.conf = conf
 
-        NetworkedDevice.__init__(self, self.conf)
+        NetworkedDevice.__init__(self, self.conf['network'])
         self._name = self.destination.hostname
 
         self.retries = self.conf['retries'] if 'retries' in self.conf else RETRIES
@@ -465,6 +451,7 @@ class PowerSwitch(Component, NetworkedDevice):
         """
         Get a URL from the userid/password protected powerswitch page Return None on failure
         """
+
         full_url = "%s/%s" % (self.base_url, url)
         result = None
         request = None
@@ -715,11 +702,17 @@ class PowerSwitchFactory:
     _instances = {}
 
     @classmethod
-    def get_instance(cls, host: str, upload_outlet_names: bool) -> PowerSwitch:
-        if host not in cls._instances:
-            cls._instances[host] = PowerSwitch(host=host, upload_outlet_names=upload_outlet_names)
+    def get_instance(cls, conf: dict, upload_outlet_names: bool, unit:bool = False) -> PowerSwitch:
+        if 'network' not in conf:
+            raise Exception(f"missing 'network' in {conf=}")
+        if 'ipaddr' not in conf['network']:
+            raise Exception(f"missing 'ipaddr' in {conf['network']=}")
+        ipaddr = conf['network']['ipaddr']
 
-        return cls._instances[host]
+        if ipaddr not in cls._instances:
+            cls._instances[ipaddr] = PowerSwitch(conf=conf, upload_outlet_names=upload_outlet_names)
+
+        return cls._instances[ipaddr]
 
     def __init__(self):
         pass
@@ -727,40 +720,32 @@ class PowerSwitchFactory:
 
 class SwitchedPowerDevice:
 
-    def __init__(self, host: str = None, outlet: int | None = None, conf: dict = None,
+    def __init__(self, power_switch_conf: dict, outlet_name: str | None = None,
                  upload_outlet_names: bool = True):
         """
-        We expect a 'power' entry in the configuration dictionary
-            power = {switch=<switch-name>, outlet=<outlet-number>}
-
         A SwitchedPowerDevice consists of a PowerSwitch instance and an outlet number.
-        The PowerSwitch instance and outlet number can be specified in a number of ways:
-        - Directly via @host (hostname or ipaddress) and @outlet parameters
-        - Via a @conf dictionary such as { 'power': { 'switch': host, 'outlet': number } }
         """
-        if conf:
-            if 'power' not in conf or ('switch' not in conf['power'] or 'outlet' not in conf['power']):
-                raise Exception(f"bad '{conf=}', expected: " + "{ 'power': { 'switch': host, 'outlet': number } }")
+        if 'outlets' not in power_switch_conf:
+            raise Exception(f"missing 'outlets' in {power_switch_conf=}")
 
-            power_conf = conf['power']
+        if not isinstance(power_switch_conf['outlets'], dict):
+            raise Exception(f"'outlets' should be a dict in {power_switch_conf=}")
 
-            if not isinstance(power_conf['switch'], str):
-                power_conf['switch'] = str(power_conf['switch'])
-
-            if not isinstance(power_conf['outlet'], int):
-                power_conf['outlet'] = int(power_conf['outlet'])
-        elif host and outlet:
-            power_conf = {'switch': host, 'outlet': outlet}
-        else:
-            raise Exception(f"expected either 'conf' or ('host' and 'outlet') parameter(s)")
+        outlet = None
+        for k, v in power_switch_conf['outlets'].items():
+            if v == outlet_name:
+                outlet = k
+                break
+        if not outlet:
+            raise Exception(f"could not find {outlet_name=} in {power_switch_conf['outlets']=}")
 
         self.switch: PowerSwitch | None = None
         try:
-            self.switch = PowerSwitchFactory.get_instance(power_conf['switch'], upload_outlet_names=upload_outlet_names)
+            self.switch = PowerSwitchFactory.get_instance(conf=power_switch_conf, upload_outlet_names=upload_outlet_names)
         except:
             pass
-        self.outlet = power_conf['outlet']
-        self.delay_after_on = power_conf['delay-after-on'] if 'delay-after-on' in power_conf else 0
+        self.outlet = int(outlet)
+        self.delay_after_on = power_switch_conf['delay_after_on'] if 'delay_after_on' in power_switch_conf else 0
 
     def power_on(self):
         if self.switch and not self.switch.is_on(self.outlet):
@@ -794,6 +779,82 @@ class SwitchedPowerDevice:
         return {
             'powered': self.is_on(),
         }
+
+
+def make_power_conf(conf: dict, outlet_name: str) -> dict:
+    if 'power_switch' not in conf:
+        raise Exception(f"not 'power_switch' in {conf=}")
+    if 'network' not in conf['power_switch']:
+        raise Exception(f"no 'network' in {conf['power_switch']=}")
+    if 'ipaddr' not in conf['power_switch']['network']:
+        raise Exception(f"no 'ipaddr' in {conf['power_switch']['network']=}")
+    if 'outlets' not in conf['power_switch']:
+        raise Exception(f"no 'outlets' in {conf['power_switch']=}")
+    if not isinstance(conf['power_switch']['outlets'], dict):
+        raise Exception(f"'outlets' is not a dict in {conf['power_switch']=}")
+
+    ipaddr = conf['power_switch']['network']['ipaddr']
+    outlet = None
+    outlets = conf['power_switch']['outlets']
+    for o in range(1, 9):
+        if outlets[f"{o}"] == outlet_name:
+            outlet = f"{o}"
+            break
+    if not outlet:
+        raise Exception(f"no {outlet_name=} in {outlets=}")
+
+    return {
+        'power': {
+            'switch': ipaddr,
+            'outlet': outlet,
+        }
+    }
+
+
+def make_unit_power_conf(outlet_name: str):
+    """
+    Makes a power configuration dictionary suitable for SwitchedPowerDevice.
+    It assumes the hostname of the power-switch is derived from the current hostname
+     by replacing 'mast' with 'mastps' (i.e. 'mastw' => 'mastpsw', 'mast01' => 'mastps01')
+    It makes a configuration dictionary from:
+    - The [power-switch] entry
+    - Updated by the [power-switch.unit] entry
+    - Updated by [power-switch.<hostname>] (if it exists)
+
+    Parameters
+    ----------
+    outlet_name
+
+    Returns
+    -------
+
+    """
+    hostname = socket.gethostname()
+    hostname = hostname.replace('mast', 'mastps')
+    conf: dict = deepcopy(Config().toml['power-switch'])
+    conf.update(Config().toml['power-switch']['unit'])
+    if f"power-switch.{hostname}" in Config().toml:
+        conf.update(Config().toml[f"power-switch.{hostname}"])
+    if 'outlets' not in conf:
+        raise Exception(f"no 'outlets' in '{conf=}'")
+
+    outlet: int | None = None
+    for k, v in conf['outlets'].items():
+        if v.lower() == outlet_name.lower():
+            outlet = k
+            break
+    if not outlet:
+        raise Exception(f"no outlet named '{outlet_name}' in '{conf['outlets']}'")
+
+    if not hostname.endswith('.weizmann.ac.il'):
+        hostname += '.weizmann.ac.il'
+
+    return {
+        'power': {
+            'switch': hostname,
+            'outlet': outlet,
+        }
+    }
 
 
 if __name__ == "__main__":  # pragma: no cover
