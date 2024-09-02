@@ -610,10 +610,12 @@ class PowerSwitch(Component, NetworkedDevice):
         if self.detected:
             outlet_states = self.status_list()
             if outlet_states is None:
+                logger.info(f"outlet_status: returning 'Unknown' because outlet_states is None")
                 return 'Unknown'
             st = outlet_states[outlet-1]
             return st[2]
         else:
+            logger.info(f"outlet_status: returning 'Unknown' because not detected")
             return 'Unknown'
 
     def status(self):
