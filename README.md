@@ -43,7 +43,7 @@ switch.off(1)
 print('The powerstate of the first outlet is currently', switch[0].state)
 
 print('Renaming the first outlet as "Traffic light"')
-switch[0].name = 'Traffic light'
+switch[0].hostname = 'Traffic light'
 
 print('The current status of the powerswitch is:')
 print(switch)

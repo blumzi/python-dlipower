@@ -32,7 +32,7 @@ class TestDLIPowerPro(VCRTestCase):
         outlet = self.p[0]
         outlet.use_description = True
         result = outlet.__unicode__()
-        self.assertEqual(result, '%s:%s' % (outlet.name, outlet.state))
+        self.assertEqual(result, '%s:%s' % (outlet.hostname, outlet.state))
 
     def test__dlipower__statuslist(self):
         switch = PowerSwitch(userid=self.userid, password=self.password, hostname=self.switch_hostname,
@@ -89,7 +89,7 @@ class TestDLIPowerPro(VCRTestCase):
 
     def test_outlet(self):
         ol = Outlet(None, 1, state='OFF')
-        self.assertEqual(ol.switch, None)
+        self.assertEqual(ol.power_switch, None)
         self.assertEqual(ol.outlet_number, 1)
         self.assertEqual(ol.__str__(), '1:OFF')
         self.assertEqual(ol.__repr__(), "<dlipower_outlet '1:OFF'>")
@@ -131,22 +131,22 @@ class TestDLIPowerPro(VCRTestCase):
         self.p.verify()
 
     def test_outlet_set_name(self):
-        self.p[0].name='goober'
+        self.p[0].hostname= 'goober'
         self.assertEqual(self.p.get_outlet_name(1), 'goober')
 
     def test_determine_outlet(self):
-        self.p[0].name='goober'
+        self.p[0].hostname= 'goober'
         self.assertEqual(self.p.determine_outlet('goober'), 1)
 
     def test__outlet__unicode__magic(self):
         outlet = self.p[0]
         result = outlet.__unicode__()
-        self.assertEqual(result, '%s:%s' % (outlet.name, outlet.state))
+        self.assertEqual(result, '%s:%s' % (outlet.hostname, outlet.state))
 
     def test__outlet__str__magic(self):
         outlet = self.p[0]
         result = outlet.__str__()
-        self.assertEqual(result, '%s:%s' % (outlet.name, outlet.state))
+        self.assertEqual(result, '%s:%s' % (outlet.hostname, outlet.state))
 
     @skip('Does not work with unittest')
     def test_command_on_outlets(self):

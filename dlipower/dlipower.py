@@ -743,7 +743,8 @@ class SwitchedPowerDevice:
 
         self.switch: PowerSwitch | None = None
         try:
-            self.switch = PowerSwitchFactory.get_instance(conf=power_switch_conf, upload_outlet_names=upload_outlet_names)
+            self.switch = (
+                PowerSwitchFactory.get_instance(conf=power_switch_conf, upload_outlet_names=upload_outlet_names))
         except:
             pass
         self.outlet = int(outlet)
