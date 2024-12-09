@@ -89,7 +89,7 @@ class TestDLIPowerPro(VCRTestCase):
 
     def test_outlet(self):
         ol = Outlet(None, 1, state='OFF')
-        self.assertEqual(ol.power_switch, None)
+        self.assertEqual(ol.switch, None)
         self.assertEqual(ol.outlet_number, 1)
         self.assertEqual(ol.__str__(), '1:OFF')
         self.assertEqual(ol.__repr__(), "<dlipower_outlet '1:OFF'>")
